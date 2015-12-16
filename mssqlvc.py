@@ -1,0 +1,233 @@
+# -*- coding: utf-8 -*-
+"""
+    mssqlvc
+    ~~~~~~~
+
+    Database version control utility for Microsoft SQL Server. See README.md for more information.
+
+    Licensed under the BSD license. See LICENSE file in the project root for full license information.
+"""
+
+import argparse
+import clr
+import datetime
+import logging
+import os
+import urlparse
+import re
+import sys
+
+import System
+
+clr.AddReference('Microsoft.SqlServer.Smo')
+clr.AddReference('Microsoft.SqlServer.SqlEnum')
+clr.AddReference('Microsoft.SqlServer.ConnectionInfo')
+import Microsoft.SqlServer.Management.Smo as Smo
+import Microsoft.SqlServer.Management.Common as Common
+
+__author__ = 'Ivan Kozhin'
+__copyright__ = 'Copyright (c) 2015, Ivan Kozhin'
+__license__ = 'BSD'
+__version__ = '1.3'
+__all__ = ['MsSqlVersion']
+
+
+class MsSqlVersion(object):
+    class bcolors:
+        OKBLUE = '\033[94m'
+        OKGREEN = '\033[92m'
+        WARNING = '\033[93m'
+        FAIL = '\033[91m'
+        ENDC = '\033[0m'
+        BOLD = '\033[1m'
+
+    def __init__(self, connection_string, patch_dir='.', exclude_pattern=None, logger=None, stoponerror=False,
+        noexecute=False):
+        """
+        Initialize instance with connection and database objects.
+
+        :param connection_string: Connection string in rfc1738 url format
+        :param patch_dir: Patch directory with .sql files
+        :param exclude_pattern: String with regular expression the patch files should match
+        :param logger: Logger that is used for logging
+        :param stoponerror: Stop execution on error, default behavior is to continue
+        :param noexecute: Do not execute pathes, to show to output
+        """
+        url = urlparse.urlparse(connection_string)
+
+        self.connection = Common.ServerConnection(LoginSecure=False, Login=url.username, Password=url.password,
+            ServerInstance=url.hostname, DatabaseName=url.path.replace('/', ''), ConnectTimeout=120)
+        self.server = Smo.Server(self.connection)
+        self.database = self.server.Databases[self.connection.DatabaseName]
+        self.exclude_pattern = exclude_pattern
+        self.patch_dir = patch_dir
+        self.stoponerror = stoponerror
+        self.noexecute = noexecute
+        self.executed_count = 0
+
+        self.logger = logging.NullHandler() if not logger else logger
+
+        if not os.path.exists(patch_dir):
+            raise Exception('Patch folder does not exist')
+        if 'mssql' not in connection_string:
+            raise Exception('Wrong connection string, it should contain mssql word')
+
+        exists = self._create_patch_table_if_not_exists(self.database)
+        if not exists:
+            self.logger.info('[%s] created _patch_history table' % (self.database.Name,))
+
+    def __del__(self):
+        if self.server:
+            self.server.ConnectionContext.Disconnect()
+
+    def update(self):
+        """Executes database update process"""
+        applied_patches = self.get_applied_patches(self.database)
+        sql_patches = self.get_sql_files_from_dir(self.patch_dir, applied_patches, self.exclude_pattern)
+        sql_patches.sort()
+        self.logger.debug('Files to execute %s' % (sql_patches,))
+        for sql_patch in sql_patches:
+            if self.noexecute:
+                self.logger.info('  ' + sql_patch)
+                continue
+            success = self.execute_from_file(sql_patch)
+            if success:
+                self.executed_count += 1
+                self.put_patch(sql_patch)
+            if not success and self.stoponerror:
+                self.logger.critical(MsSqlVersion.bcolors.WARNING + 'Execution stopped. Please fix errors and try again.'
+                    + MsSqlVersion.bcolors.ENDC)
+                return
+        self.logger.info('Executed %d patches' % (self.executed_count,))
+
+    def execute_from_file(self, file):
+        """Executes file against database in transaction, returns True if success"""
+        ret = True
+        try:
+            full_name = os.path.join(os.path.normpath(self.patch_dir), file)
+            with open(full_name, 'r') as sql_file:
+                sql = sql_file.read()
+                self.logger.info('[%s] Executing %s...' % (self.database.Name, file))
+                
+                self.connection.BeginTransaction()
+                self.database.ExecuteNonQuery(sql)
+                self.connection.CommitTransaction()
+        except Exception as e:
+            self.connection.RollBackTransaction()
+            self.logger.error('Exception on %s' % (file,))
+
+            message = e.message or e
+            if e.clsException.InnerException is not None and e.clsException.InnerException.InnerException is not None:
+                message += os.linesep + '  ' + e.clsException.InnerException.InnerException.Message
+
+            self.logger.error('[%s] %s (%s)' % (self.database.Name, full_name, message))
+            ret = False
+        return ret
+
+    def put_patch(self, file):
+        """Write record that file has been executed"""
+        now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        sql = 'insert _patch_history (name, applied_at) values(\'%s\', \'%s\');' % (file, now)
+        self.database.ExecuteNonQuery(sql)
+
+    @staticmethod
+    def get_applied_patches(database):
+        rows = database.ExecuteWithResults('select name from _patch_history;').Tables[0].Rows
+        return set([row['name'] for row in rows])
+
+    @staticmethod
+    def get_sql_files_from_dir(dir, exclude_list=[], exclude_pattern=None):
+        """Get all script files from directory"""
+        sql_files = []
+        prevdir = os.getcwd() 
+        os.chdir(dir)
+        for root, dirs, files in os.walk('.'):
+            for file in files:
+                file = os.path.normpath(os.path.join(root, file))
+                if (file in exclude_list or not file.endswith('.sql') or
+                    (exclude_pattern and re.search(exclude_pattern, file))):
+                    continue
+                sql_files.append(file)
+        os.chdir(prevdir)
+        return sql_files
+
+    @staticmethod
+    def _create_patch_table_if_not_exists(database):
+        """Create patch table in database if not exists"""
+        sql = 'select * from sys.objects where object_id = object_id(\'_patch_history\') AND type in (\'U\');'
+        exists = database.ExecuteWithResults(sql).Tables[0].Rows.Count > 0
+        if not exists:
+            sql = """
+                create table _patch_history (id int not null identity(1, 1), name varchar(100) not null,
+                    applied_at datetime not null);
+                alter table _patch_history add constraint _patch_history_PK primary key clustered (id);
+                """
+            database.ExecuteNonQuery(sql)
+        return exists
+
+
+def get_cmd_line_parser():
+    """Get initialized argparse.ArgumentParser object"""
+    parser = argparse.ArgumentParser(
+        description='MSSQL database patch history tool',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''Example: %(prog)s -c "mssql://sa:123@host\instance/database" -d "D:/1/project/patch"''')
+    parser.add_argument('--connection', '-c',
+        required=True,
+        dest='connection',
+        action='store',
+        help='connection string in rfc1738 url format')
+    parser.add_argument('--directory', '-d',
+        dest='directory',
+        action='store',
+        default='.',
+        help='directory with patch files')
+    parser.add_argument('--log', '-l',
+        dest='log',
+        action='store',
+        help='log file')
+    parser.add_argument('--noexecute', '-n',
+        action='store_true',
+        dest='noexecute',
+        default=False,
+        help='displays pending script files with no execution')
+    parser.add_argument('--stoponerror', '-soe',
+        action='store_true',
+        dest='stoponerror',
+        default=False,
+        help='stops execution if any script fails')
+    parser.add_argument('--exclude-pattern', '-ep',
+        dest='exclude_pattern',
+        help='skips files match to regular expression')
+    parser.add_argument('--debug',
+        action='store_true',
+        dest='debug',
+        default=False,
+        help='enable debug output')
+    parser.add_argument('--version', '-v',
+        action='version',
+        version='%(prog)s ' + __version__)
+    return parser
+
+if __name__ == '__main__':
+    # parser
+    parser = get_cmd_line_parser()
+    parser_args = parser.parse_args()
+    if parser_args.connection is None or parser_args.directory is None:
+        parser.print_help()
+        exit(1)
+
+    # logging
+    logger = logging.getLogger('mssql')
+    if parser_args.log:
+        fh = logging.FileHandler(parser_args.log)
+        fh.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+        logger.addHandler(fh)
+    ch = logging.StreamHandler()
+    ch.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+    logger.setLevel(logging.DEBUG if parser_args.debug else logging.INFO)
+    logger.addHandler(ch)
+
+    sqlvc = MsSqlVersion(parser_args.connection, parser_args.directory, exclude_pattern=parser_args.exclude_pattern,
+       stoponerror=parser_args.stoponerror, noexecute=parser_args.noexecute, logger=logger)
+    sqlvc.update()
