@@ -17,6 +17,21 @@ The script creates special table `_patch_history` in database that contains all 
 
 The script also allows to filter by regular expression and stop on first exception.
 
+Parameters
+----------
+
+Name                                                     | Description
+----                                                     | -----------
+--connection CONNECTION, -c CONNECTION                   | connection string in rfc1738 url format, required
+--directory DIRECTORY, -d DIRECTORY                      | directory with patch files
+--log LOG, -l LOG                                        | log file
+--noexecute, -n                                          | displays pending script files with no execution
+--noexecute-fill, -nf                                    | displays pending script files with no execution and fills patch table
+--stoponerror, -soe                                      | stops execution if any script fails
+--exclude-pattern EXCLUDE_PATTERN, -ep EXCLUDE_PATTERN   | skips files match to regular expression
+--debug                                                  | enables debug output
+--version, -v                                            | show program's version number and exit
+
 Examples
 --------
 

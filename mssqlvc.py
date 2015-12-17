@@ -9,7 +9,6 @@
 """
 
 import argparse
-import clr
 import datetime
 import logging
 import os
@@ -17,6 +16,11 @@ import urlparse
 import re
 import sys
 
+try:
+    import clr
+except ImportError:
+    print('Cannot import crl module, make sure you run this script using IronPython')
+    exit(2)
 import System
 
 clr.AddReference('Microsoft.SqlServer.Smo')
@@ -41,8 +45,7 @@ class MsSqlVersion(object):
         ENDC = '\033[0m'
         BOLD = '\033[1m'
 
-    def __init__(self, connection_string, patch_dir='.', exclude_pattern=None, logger=None, stoponerror=False,
-        noexecute=False):
+    def __init__(self, connection_string, patch_dir='.', exclude_pattern=None, logger=None, stoponerror=False, noexecute=False):
         """
         Initialize instance with connection and database objects.
 
@@ -51,7 +54,6 @@ class MsSqlVersion(object):
         :param exclude_pattern: String with regular expression the patch files should match
         :param logger: Logger that is used for logging
         :param stoponerror: Stop execution on error, default behavior is to continue
-        :param noexecute: Do not execute pathes, to show to output
         """
         url = urlparse.urlparse(connection_string)
 
@@ -62,7 +64,6 @@ class MsSqlVersion(object):
         self.exclude_pattern = exclude_pattern
         self.patch_dir = patch_dir
         self.stoponerror = stoponerror
-        self.noexecute = noexecute
         self.executed_count = 0
 
         self.logger = logging.NullHandler() if not logger else logger
@@ -82,25 +83,33 @@ class MsSqlVersion(object):
 
     def update(self):
         """Executes database update process"""
-        applied_patches = self.get_applied_patches(self.database)
-        sql_patches = self.get_sql_files_from_dir(self.patch_dir, applied_patches, self.exclude_pattern)
-        sql_patches.sort()
-        self.logger.debug('Files to execute %s' % (sql_patches,))
-        for sql_patch in sql_patches:
-            if self.noexecute:
-                self.logger.info('  ' + sql_patch)
-                continue
-            success = self.execute_from_file(sql_patch)
+        patches = self.get_pending_patches()
+        self.logger.debug('Files to execute %s' % (patches,))
+        for patch in patches:
+            success = self.execute_file(patch)
             if success:
                 self.executed_count += 1
-                self.put_patch(sql_patch)
+                self.put_patch(patch)
             if not success and self.stoponerror:
                 self.logger.critical(MsSqlVersion.bcolors.WARNING + 'Execution stopped. Please fix errors and try again.'
                     + MsSqlVersion.bcolors.ENDC)
                 return
-        self.logger.info('Executed %d patches' % (self.executed_count,))
+        self.logger.info('[%s] Executed %d patch(-es)' % (self.database.Name, self.executed_count))
 
-    def execute_from_file(self, file):
+    def fill(self):
+        """Skip scripts execution but add them to patches table"""
+        patches = self.get_pending_patches()
+        for patch in patches:
+            self.logger.info('Add file %s' % (patch,))
+            self.put_patch(patch)
+
+    def get_pending_patches(self):
+        applied_patches = self.get_applied_patches()
+        patches = self._get_sql_files_from_dir(self.patch_dir, applied_patches, self.exclude_pattern)
+        patches.sort()
+        return patches
+
+    def execute_file(self, file):
         """Executes file against database in transaction, returns True if success"""
         ret = True
         try:
@@ -118,7 +127,7 @@ class MsSqlVersion(object):
 
             message = e.message or e
             if e.clsException.InnerException is not None and e.clsException.InnerException.InnerException is not None:
-                message += os.linesep + '  ' + e.clsException.InnerException.InnerException.Message
+                message += ' ' + e.clsException.InnerException.InnerException.Message
 
             self.logger.error('[%s] %s (%s)' % (self.database.Name, full_name, message))
             ret = False
@@ -130,13 +139,12 @@ class MsSqlVersion(object):
         sql = 'insert _patch_history (name, applied_at) values(\'%s\', \'%s\');' % (file, now)
         self.database.ExecuteNonQuery(sql)
 
-    @staticmethod
-    def get_applied_patches(database):
-        rows = database.ExecuteWithResults('select name from _patch_history;').Tables[0].Rows
+    def get_applied_patches(self):
+        rows = self.database.ExecuteWithResults('select name from _patch_history;').Tables[0].Rows
         return set([row['name'] for row in rows])
 
     @staticmethod
-    def get_sql_files_from_dir(dir, exclude_list=[], exclude_pattern=None):
+    def _get_sql_files_from_dir(dir, exclude_list=[], exclude_pattern=None):
         """Get all script files from directory"""
         sql_files = []
         prevdir = os.getcwd() 
@@ -176,7 +184,7 @@ def get_cmd_line_parser():
         required=True,
         dest='connection',
         action='store',
-        help='connection string in rfc1738 url format')
+        help='connection string in rfc1738 url format, required')
     parser.add_argument('--directory', '-d',
         dest='directory',
         action='store',
@@ -191,6 +199,11 @@ def get_cmd_line_parser():
         dest='noexecute',
         default=False,
         help='displays pending script files with no execution')
+    parser.add_argument('--noexecute-fill', '-nf',
+        action='store_true',
+        dest='noexecute_fill',
+        default=False,
+        help='displays pending script files with no execution and fills patch table')
     parser.add_argument('--stoponerror', '-soe',
         action='store_true',
         dest='stoponerror',
@@ -203,7 +216,7 @@ def get_cmd_line_parser():
         action='store_true',
         dest='debug',
         default=False,
-        help='enable debug output')
+        help='enables debug output')
     parser.add_argument('--version', '-v',
         action='version',
         version='%(prog)s ' + __version__)
@@ -228,6 +241,13 @@ if __name__ == '__main__':
     logger.setLevel(logging.DEBUG if parser_args.debug else logging.INFO)
     logger.addHandler(ch)
 
+    # database handle
     sqlvc = MsSqlVersion(parser_args.connection, parser_args.directory, exclude_pattern=parser_args.exclude_pattern,
-       stoponerror=parser_args.stoponerror, noexecute=parser_args.noexecute, logger=logger)
-    sqlvc.update()
+       stoponerror=parser_args.stoponerror, logger=logger)
+    if parser_args.noexecute:
+        for patch in sqlvc.get_pending_patches():
+            logger.info('  ' + patch)
+    elif parser_args.noexecute_fill:
+        sqlvc.fill()
+    else:
+        sqlvc.update()
