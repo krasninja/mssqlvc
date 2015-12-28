@@ -45,7 +45,8 @@ class MsSqlVersion(object):
         ENDC = '\033[0m'
         BOLD = '\033[1m'
 
-    def __init__(self, connection_string, patch_dir='.', exclude_pattern=None, logger=None, stoponerror=False, noexecute=False):
+    def __init__(self, connection_string, patch_dir='.', exclude_pattern=None, logger=None, stoponerror=False, noexecute=False,
+        case_insensitive=False, record_files_only=False):
         """
         Initialize instance with connection and database objects.
 
@@ -54,6 +55,8 @@ class MsSqlVersion(object):
         :param exclude_pattern: String with regular expression the patch files should match
         :param logger: Logger that is used for logging
         :param stoponerror: Stop execution on error, default behavior is to continue
+        :param case_insensitive: Use case insensitive to compare patch files
+        :param record_files_only: Only file names will be stored to patch table without folder paths
         """
         url = urlparse.urlparse(connection_string)
 
@@ -64,6 +67,8 @@ class MsSqlVersion(object):
         self.exclude_pattern = exclude_pattern
         self.patch_dir = patch_dir
         self.stoponerror = stoponerror
+        self.case_insensitive = case_insensitive
+        self.record_files_only = record_files_only
         self.executed_count = 0
 
         self.logger = logging.NullHandler() if not logger else logger
@@ -105,7 +110,9 @@ class MsSqlVersion(object):
 
     def get_pending_patches(self):
         applied_patches = self.get_applied_patches()
-        patches = self._get_sql_files_from_dir(self.patch_dir, applied_patches, self.exclude_pattern)
+        if self.record_files_only:
+            applied_patches = [os.path.basename(f) for f in applied_patches]
+        patches = self._get_sql_files_from_dir(applied_patches)
         patches.sort()
         return patches
 
@@ -136,24 +143,29 @@ class MsSqlVersion(object):
     def put_patch(self, file):
         """Write record that file has been executed"""
         now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        sql = 'insert _patch_history (name, applied_at) values(\'%s\', \'%s\');' % (file, now)
+        sql = 'insert [_patch_history] (name, applied_at) values(\'%s\', \'%s\');' % (file, now)
         self.database.ExecuteNonQuery(sql)
 
     def get_applied_patches(self):
-        rows = self.database.ExecuteWithResults('select name from _patch_history;').Tables[0].Rows
+        rows = self.database.ExecuteWithResults('select name from [_patch_history];').Tables[0].Rows
         return set([row['name'] for row in rows])
 
-    @staticmethod
-    def _get_sql_files_from_dir(dir, exclude_list=[], exclude_pattern=None):
+    def _get_sql_files_from_dir(self, exclude_list=[]):
         """Get all script files from directory"""
-        sql_files = []
+        _exclude_list = set(exclude_list) if not self.case_insensitive else [f.lower() for f in exclude_list]
         prevdir = os.getcwd() 
-        os.chdir(dir)
+        os.chdir(self.patch_dir)
+        sql_files = []
         for root, dirs, files in os.walk('.'):
             for file in files:
                 file = os.path.normpath(os.path.join(root, file))
-                if (file in exclude_list or not file.endswith('.sql') or
-                    (exclude_pattern and re.search(exclude_pattern, file))):
+                _file = file
+                if self.case_insensitive:
+                    _file = _file.lower()
+                if self.record_files_only:
+                    _file = os.path.basename(_file)
+                if (_file in _exclude_list or not _file.lower().endswith('.sql') or
+                    (self.exclude_pattern and re.search(self.exclude_pattern, file))):
                     continue
                 sql_files.append(file)
         os.chdir(prevdir)
@@ -166,9 +178,9 @@ class MsSqlVersion(object):
         exists = database.ExecuteWithResults(sql).Tables[0].Rows.Count > 0
         if not exists:
             sql = """
-                create table _patch_history (id int not null identity(1, 1), name varchar(100) not null,
+                create table [_patch_history] (id int not null identity(1, 1), name varchar(100) not null,
                     applied_at datetime not null);
-                alter table _patch_history add constraint _patch_history_PK primary key clustered (id);
+                alter table [_patch_history] add constraint _patch_history_PK primary key clustered (id);
                 """
             database.ExecuteNonQuery(sql)
         return exists
@@ -212,6 +224,16 @@ def get_cmd_line_parser():
     parser.add_argument('--exclude-pattern', '-ep',
         dest='exclude_pattern',
         help='skips files match to regular expression')
+    parser.add_argument('--record-files-only', '-rfo',
+        action='store_true',
+        dest='record_files_only',
+        default=False,
+        help='only file names will be stored to patch table without folder paths')
+    parser.add_argument('--case-insensitive', '-ci',
+        action='store_true',
+        dest='case_insensitive',
+        default=False,
+        help='use case insensitive to compare patch files so "PatchName.sql" and "patchname.sql" is the same')
     parser.add_argument('--debug',
         action='store_true',
         dest='debug',
@@ -221,6 +243,7 @@ def get_cmd_line_parser():
         action='version',
         version='%(prog)s ' + __version__)
     return parser
+
 
 if __name__ == '__main__':
     # parser
@@ -243,7 +266,8 @@ if __name__ == '__main__':
 
     # database handle
     sqlvc = MsSqlVersion(parser_args.connection, parser_args.directory, exclude_pattern=parser_args.exclude_pattern,
-       stoponerror=parser_args.stoponerror, logger=logger)
+       stoponerror=parser_args.stoponerror, case_insensitive=parser_args.case_insensitive,
+       record_files_only=parser_args.record_files_only, logger=logger)
     if parser_args.noexecute:
         for patch in sqlvc.get_pending_patches():
             logger.info('  ' + patch)

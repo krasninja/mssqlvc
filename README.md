@@ -29,8 +29,10 @@ Name                                                     | Description
 --noexecute-fill, -nf                                    | displays pending script files with no execution and fills patch table
 --stoponerror, -soe                                      | stops execution if any script fails
 --exclude-pattern EXCLUDE_PATTERN, -ep EXCLUDE_PATTERN   | skips files match to regular expression
+--record-files-only, -rfi                                | only file names will be stored to patch table without folder paths
+--case_insensitive, -ci                                  | use case insensitive to compare patch files so "PatchName.sql" and "patchname.sql" is the same
 --debug                                                  | enables debug output
---version, -v                                            | show program's version number and exit
+--version, -v                                            | show program's version
 
 Examples
 --------
