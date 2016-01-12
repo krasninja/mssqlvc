@@ -143,6 +143,8 @@ class MsSqlVersion(object):
     def put_patch(self, file):
         """Write record that file has been executed"""
         now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        if self.record_files_only:
+            file = os.path.basename(file)
         sql = 'insert [_patch_history] (name, applied_at) values(\'%s\', \'%s\');' % (file, now)
         self.database.ExecuteNonQuery(sql)
 
