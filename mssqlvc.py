@@ -10,11 +10,12 @@
 
 import argparse
 import datetime
+import io
 import logging
 import os
-import urlparse
 import re
 import sys
+import urlparse
 
 try:
     import clr
@@ -30,9 +31,9 @@ import Microsoft.SqlServer.Management.Smo as Smo
 import Microsoft.SqlServer.Management.Common as Common
 
 __author__ = 'Ivan Kozhin'
-__copyright__ = 'Copyright (c) 2015, Ivan Kozhin'
+__copyright__ = 'Copyright (c) 2015-2016, Ivan Kozhin'
 __license__ = 'BSD'
-__version__ = '1.3'
+__version__ = '1.4'
 __all__ = ['MsSqlVersion']
 
 
@@ -121,7 +122,7 @@ class MsSqlVersion(object):
         ret = True
         try:
             full_name = os.path.join(os.path.normpath(self.patch_dir), file)
-            with open(full_name, 'r') as sql_file:
+            with io.open(full_name, 'r', encoding='utf8') as sql_file:
                 sql = sql_file.read()
                 self.logger.info('[%s] Executing %s...' % (self.database.Name, file))
                 
