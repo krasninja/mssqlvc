@@ -33,7 +33,7 @@ import Microsoft.SqlServer.Management.Common as Common
 __author__ = 'Ivan Kozhin'
 __copyright__ = 'Copyright (c) 2015-2016, Ivan Kozhin'
 __license__ = 'BSD'
-__version__ = '1.4'
+__version__ = '1.4.1'
 __all__ = ['MsSqlVersion']
 
 
@@ -46,8 +46,8 @@ class MsSqlVersion(object):
         ENDC = '\033[0m'
         BOLD = '\033[1m'
 
-    def __init__(self, connection_string, patch_dir='.', exclude_pattern=None, logger=None, stoponerror=False, noexecute=False,
-        case_insensitive=False, record_files_only=False):
+    def __init__(self, connection_string, patch_dir='.', exclude_pattern=None, logger=None,
+        stop_on_error=False, noexecute=False, case_insensitive=False, record_files_only=False):
         """
         Initialize instance with connection and database objects.
 
@@ -55,7 +55,7 @@ class MsSqlVersion(object):
         :param patch_dir: Patch directory with .sql files
         :param exclude_pattern: String with regular expression the patch files should match
         :param logger: Logger that is used for logging
-        :param stoponerror: Stop execution on error, default behavior is to continue
+        :param stop_on_error: Stop execution on error, default behavior is to continue
         :param case_insensitive: Use case insensitive to compare patch files
         :param record_files_only: Only file names will be stored to patch table without folder paths
         """
@@ -67,7 +67,7 @@ class MsSqlVersion(object):
         self.database = self.server.Databases[self.connection.DatabaseName]
         self.exclude_pattern = exclude_pattern
         self.patch_dir = patch_dir
-        self.stoponerror = stoponerror
+        self.stop_on_error = stop_on_error
         self.case_insensitive = case_insensitive
         self.record_files_only = record_files_only
         self.executed_count = 0
@@ -96,7 +96,7 @@ class MsSqlVersion(object):
             if success:
                 self.executed_count += 1
                 self.put_patch(patch)
-            if not success and self.stoponerror:
+            if not success and self.stop_on_error:
                 self.logger.critical(MsSqlVersion.bcolors.WARNING + 'Execution stopped. Please fix errors and try again.'
                     + MsSqlVersion.bcolors.ENDC)
                 return
@@ -219,9 +219,9 @@ def get_cmd_line_parser():
         dest='noexecute_fill',
         default=False,
         help='displays pending script files with no execution and fills patch table')
-    parser.add_argument('--stoponerror', '-soe',
+    parser.add_argument('--stop-on-error', '-soe',
         action='store_true',
-        dest='stoponerror',
+        dest='stop_on_error',
         default=False,
         help='stops execution if any script fails')
     parser.add_argument('--exclude-pattern', '-ep',
@@ -269,7 +269,7 @@ if __name__ == '__main__':
 
     # database handle
     sqlvc = MsSqlVersion(parser_args.connection, parser_args.directory, exclude_pattern=parser_args.exclude_pattern,
-       stoponerror=parser_args.stoponerror, case_insensitive=parser_args.case_insensitive,
+       stop_on_error=parser_args.stop_on_error, case_insensitive=parser_args.case_insensitive,
        record_files_only=parser_args.record_files_only, logger=logger)
     if parser_args.noexecute:
         for patch in sqlvc.get_pending_patches():

@@ -27,10 +27,10 @@ Name                                                     | Description
 --log LOG, -l LOG                                        | log file
 --noexecute, -n                                          | displays pending script files with no execution
 --noexecute-fill, -nf                                    | displays pending script files with no execution and fills patch table
---stoponerror, -soe                                      | stops execution if any script fails
+--stop-on-error, -soe                                    | stops execution if any script fails
 --exclude-pattern EXCLUDE_PATTERN, -ep EXCLUDE_PATTERN   | skips files match to regular expression
 --record-files-only, -rfo                                | only file names will be stored to patch table without folder paths
---case_insensitive, -ci                                  | use case insensitive to compare patch files so "PatchName.sql" and "patchname.sql" is the same
+--case-insensitive, -ci                                  | use case insensitive to compare patch files so "PatchName.sql" and "patchname.sql" are the same
 --debug                                                  | enables debug output
 --version, -v                                            | show program's version
 
@@ -38,7 +38,7 @@ Examples
 --------
 
 - `ipy ../mssqlvc.py -c "mssql://vctest:vctest@kawin/vctest" -d "."`
-- `ipy ../mssqlvc.py -c "mssql://vctest:vctest@kawin/vctest" -d "." --exclude-pattern "^!.*" -l "log.log" --stoponerror`
+- `ipy ../mssqlvc.py -c "mssql://vctest:vctest@kawin/vctest" -d "." --exclude-pattern "^!.*" -l "log.log" --stop-on-error`
 
 Requirements
 ------------
