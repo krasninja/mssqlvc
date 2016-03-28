@@ -33,11 +33,14 @@ import Microsoft.SqlServer.Management.Common as Common
 __author__ = 'Ivan Kozhin'
 __copyright__ = 'Copyright (c) 2015-2016, Ivan Kozhin'
 __license__ = 'BSD'
-__version__ = '1.4.1'
+__version__ = '1.4.3'
 __all__ = ['MsSqlVersion']
 
 
 class MsSqlVersion(object):
+    """
+    SQL Server patch migration class.
+    """
     class bcolors:
         OKBLUE = '\033[94m'
         OKGREEN = '\033[92m'
@@ -61,8 +64,12 @@ class MsSqlVersion(object):
         """
         url = urlparse.urlparse(connection_string)
 
-        self.connection = Common.ServerConnection(LoginSecure=False, Login=url.username, Password=url.password,
-            ServerInstance=url.hostname, DatabaseName=url.path.replace('/', ''), ConnectTimeout=120)
+        is_local_login = not url.username
+        self.connection = Common.ServerConnection(LoginSecure=is_local_login, ServerInstance=url.hostname,
+            DatabaseName=url.path.replace('/', ''), ConnectTimeout=90)
+        if not is_local_login:
+            self.connection.Login = url.username
+            self.connection.Password = url.password
         self.server = Smo.Server(self.connection)
         self.database = self.server.Databases[self.connection.DatabaseName]
         self.exclude_pattern = exclude_pattern

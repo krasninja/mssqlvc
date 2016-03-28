@@ -37,8 +37,9 @@ Name                                                     | Description
 Examples
 --------
 
-- `ipy ../mssqlvc.py -c "mssql://vctest:vctest@kawin/vctest" -d "."`
-- `ipy ../mssqlvc.py -c "mssql://vctest:vctest@kawin/vctest" -d "." --exclude-pattern "^!.*" -l "log.log" --stop-on-error`
+- `ipy mssqlvc.py -c "mssql://localhost/vctest" -d "."`
+- `ipy mssqlvc.py -c "mssql://vctest:vctest@testhost/vctest" -d "."`
+- `ipy mssqlvc.py -c "mssql://vctest:vctest@testhost/vctest" -d "." --exclude-pattern "^!.*" -l "log.log" --stop-on-error`
 
 Workflow
 --------
