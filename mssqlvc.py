@@ -106,8 +106,9 @@ class MsSqlVersion(object):
             if not success and self.stop_on_error:
                 self.logger.critical(MsSqlVersion.bcolors.WARNING + 'Execution stopped. Please fix errors and try again.'
                     + MsSqlVersion.bcolors.ENDC)
-                return
+                return 2
         self.logger.info('[%s] Executed %d patch(-es)' % (self.database.Name, self.executed_count))
+		return 0
 
     def fill(self):
         """Skip scripts execution but add them to patches table"""
@@ -284,4 +285,5 @@ if __name__ == '__main__':
     elif parser_args.noexecute_fill:
         sqlvc.fill()
     else:
-        sqlvc.update()
+        exit_code = sqlvc.update()
+		exit(exit_code)
