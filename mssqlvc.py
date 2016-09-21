@@ -108,7 +108,7 @@ class MsSqlVersion(object):
                     + MsSqlVersion.bcolors.ENDC)
                 return 2
         self.logger.info('[%s] Executed %d patch(-es)' % (self.database.Name, self.executed_count))
-		return 0
+        return 0
 
     def fill(self):
         """Skip scripts execution but add them to patches table"""
@@ -286,4 +286,4 @@ if __name__ == '__main__':
         sqlvc.fill()
     else:
         exit_code = sqlvc.update()
-		exit(exit_code)
+        exit(exit_code)
