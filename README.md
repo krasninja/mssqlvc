@@ -1,5 +1,5 @@
-Microsoft SQL Version Control
-=============================
+Microsoft SQL Server Version Control
+====================================
 
 Overview
 --------
@@ -83,3 +83,9 @@ Requirements
 
 - IronPython 2.7+
 - Microsoft SQL Shared Management Objects
+
+Contributors
+------------
+
+* Ivan Kozhin <ivan@saritasa.com>
+* Saritasa Team http://www.saritasa.com

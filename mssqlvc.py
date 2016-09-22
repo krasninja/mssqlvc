@@ -31,13 +31,15 @@ import Microsoft.SqlServer.Management.Smo as Smo
 import Microsoft.SqlServer.Management.Common as Common
 
 __author__ = 'Ivan Kozhin'
-__copyright__ = 'Copyright (c) 2015-2016, Ivan Kozhin'
+__copyright__ = 'Copyright (c) 2015-2016, Saritasa'
 __license__ = 'BSD'
-__version__ = '1.4.3'
+__version__ = '1.4.5'
 __all__ = ['MsSqlVersion']
+
 
 class ScriptExecutionError(Exception):
     pass
+
 
 class MsSqlVersion(object):
     """
