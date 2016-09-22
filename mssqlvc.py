@@ -36,6 +36,8 @@ __license__ = 'BSD'
 __version__ = '1.4.3'
 __all__ = ['MsSqlVersion']
 
+class ScriptExecutionError(Exception):
+    pass
 
 class MsSqlVersion(object):
     """
@@ -106,7 +108,7 @@ class MsSqlVersion(object):
             if not success and self.stop_on_error:
                 self.logger.critical(MsSqlVersion.bcolors.WARNING + 'Execution stopped. Please fix errors and try again.'
                     + MsSqlVersion.bcolors.ENDC)
-                return
+                raise ScriptExecutionError()
         self.logger.info('[%s] Executed %d patch(-es)' % (self.database.Name, self.executed_count))
 
     def fill(self):
