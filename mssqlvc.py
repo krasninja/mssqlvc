@@ -70,12 +70,13 @@ class MsSqlVersion(object):
 
         is_local_login = not url.username
         self.connection = Common.ServerConnection(LoginSecure=is_local_login, ServerInstance=url.hostname,
-            DatabaseName=url.path.replace('/', ''), ConnectTimeout=90)
+            DatabaseName=url.path.replace('/', ''))
         if not is_local_login:
             self.connection.Login = url.username
             self.connection.Password = url.password
         self.server = Smo.Server(self.connection)
         self.database = self.server.Databases[self.connection.DatabaseName]
+        self.server.ConnectionContext.ConnectTimeout = 90
         self.exclude_pattern = exclude_pattern
         self.patch_dir = patch_dir
         self.stop_on_error = stop_on_error
